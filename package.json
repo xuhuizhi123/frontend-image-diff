@@ -1,0 +1,9 @@
+{
+  "name": "frontend-image-diff",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright dependency for web_capture.js (portable across machines)",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
