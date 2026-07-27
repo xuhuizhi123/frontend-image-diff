@@ -1,203 +1,139 @@
 ---
-
-## name: frontend-image-diff
+name: frontend-image-diff
 title: "前端图片找不同"
-description: "通用前端页面截图视觉差异比对工具，支持Playwright自动截取Web页面+缩放对齐+ORB仿射校准、同宽不同高顶部对齐+蓝线标记、批量并行比对、输出标注对比图+MD报告。"
-summary: "通用前端页面截图视觉差异比对工具，支持Playwright自动截取Web页面+缩放对齐+ORB仿射校准、同宽不同高顶部对齐+蓝线标记、批量并行比对、输出标注对比图+MD报告。"
+description: "Playwright截图 + SSIM定位 + Agent拆解色/字号/间距；交付物仅 comparison_*.png 与 report.md。"
+summary: "两阶段视觉比对：SSIM 定位，Agent 复核；最终只保留对比图与精简报告。"
 agent_created: true
 read_when:
   - 用户提到"图片比对"、"图片对比"、"找不同"、"截图对比"、"视觉差异"、"UI回归"、"页面对比"
   - 用户提供两张图片或两个目录要求对比差异
-  - 用户需要前端页面视觉回归测试
-  - 用户需要从网页截图然后和原型图对比
-  - 用户提到"web截图"、"页面截图"、"自动截图"、"原型对比"
+  - 用户需要从前端页面截图并与原型对比
+  - 用户提到"Agent复核"、"差异拆解"、"设计还原验收"
+---
 
 # 前端图片找不同 Skill
 
-通用前端页面截图视觉差异比对工具。针对**前端原型图 vs 实现图**的对比场景优化：自动消除字体渲染/抗锯齿/色域差异导致的误标，只报真正的结构差异。
+原型图 vs 实现图视觉比对。SSIM 第一遍定位，Agent 第二遍拆解（色 / 字号 / **间距** / **静态文案**）。
 
-支持两种数据来源：
+**最终交付物仅两种**：`comparison_*.png`、`report.md`（`batch_results` 内嵌于 report 注释，目录不留其它临时文件）。
 
-- **本地图片**：直接指定两张图或两个目录
-- **Web 截图**：自动用 Playwright 访问网页，分块截图+拼接，再与本地原型图对比
+## 前置
 
-## 核心能力
+- Python 3.10+：`pip install -r requirements.txt`
+- Node 18+：在 skill 根目录 `npm install`（playwright）
+- 系统已装 Edge 或 Chrome
 
-- **Web 自动截图**（新增）：Playwright 设备模拟（内置 iPhone 8 等30+设备），自动处理 SPA 内部滚动容器分块截图+拼接
-- **三种对齐策略**自动选择：同尺寸 / 同宽不同高 / 不同宽高
-- **ORB 仿射校准**（不同宽高时）：保留 A 的局部特征，像素级 SSIM 不会因 resize 引入伪差异
-- **顶部对齐 + 蓝线**（同宽不同高时）：蓝线在多出部分的边界，标注"仅A有(下)"/"仅B有(下)"
-- **细红框标记内容差异**：1px 细红框 + 小角标编号
-- **批量并行**：自动配对（文件名优先，感知哈希兜底）+ ProcessPoolExecutor 并行
-- **低 token 消耗**：只输出 1 张对比图 + JSON，默认不保存裁剪图
+可选环境变量：`FRONTEND_DIFF_PYTHON`、`FRONTEND_DIFF_NODE`、`FRONTEND_DIFF_NODE_PATH`
 
-## 前置条件
+## 用法（skill 根目录）
 
-跨机器通用，不依赖某台电脑的绝对路径：
+### 输入源与尺寸校验（强制）
 
-- **Python 3.10+**（`python` / `python3` 在 PATH 中）
-- 安装 Python 依赖：`pip install -r requirements.txt`（opencv-python、Pillow、numpy、scikit-image、imagehash）
-- **Node.js 18+**（`node` 在 PATH 中；Web 截图需要）
-- 在 skill 根目录安装 Playwright：`npm install`（会生成 `node_modules/playwright`）
-- 系统已安装 **Microsoft Edge** 或 **Google Chrome**（截图优先 Edge，失败回退 Chrome）
+- 优先使用用户提供的**本地路径 / 项目内原图文件**；聊天贴图可能被平台压缩，未核尺寸前不可直接当原图。
+- 开跑前必须核对 A/B 尺寸（如 `WxH`）是否与预期一致；若明显偏小（相对用户声明或常见桌面稿），应先停并改用路径原图后再跑。
 
-可选环境变量（需要覆盖默认探测时再设）：
-
-
-| 变量                                      | 作用                                 |
-| --------------------------------------- | ---------------------------------- |
-| `FRONTEND_DIFF_PYTHON`                  | Python 可执行文件路径                     |
-| `FRONTEND_DIFF_NODE`                    | Node 可执行文件路径                       |
-| `FRONTEND_DIFF_NODE_PATH` / `NODE_PATH` | 含 `playwright` 的 `node_modules` 目录 |
-
-
-脚本目录：本仓库的 `scripts/`（与 `SKILL.md` 同级下的 `scripts/`）。
-
-## 使用方式
-
-以下命令假设当前目录为 skill 根目录（含 `scripts/`、`requirements.txt`、`package.json`）。
-
-### 方式一：Web 截图 → 比对 → 报告（一键，推荐）
+### Web 一键
 
 ```bash
 python scripts/web_to_diff.py \
+  --base-url "https://your-site.com" \
+  --routes '[{"name":"政策","route":"/#/zwpolicy"}]' \
+  --device "iPhone 8" \
   --proto-dir "/path/to/prototypes" \
   --work-dir "./output/web_diff"
 ```
 
-完整参数：
+默认 quiet；排查加 `--verbose`。结束后 `work-dir/compare_output/` 只有对比图 + 报告。
+
+常用参数：`--viewport-width` / `--dpr`、`--sensitivity`、`--no-deliver`（保留临时文件）
+
+### 本地两目录
 
 ```bash
-python scripts/web_to_diff.py \
-  --base-url "https://your-site.com" \
-  --routes '[{"name":"首页","route":"/#/home"},{"name":"设置","route":"/#/settings"}]' \
-  --device "iPhone 8" \
-  --proto-dir "/path/to/prototypes" \
-  --work-dir "./output/web_diff" \
-  --sensitivity medium
+python scripts/batch_diff.py --dir-a A --dir-b B --output ./out --quiet
+python scripts/report_gen.py --results ./out/batch_results.json --output ./out/report.md --deliver
 ```
 
+### 两阶段工作流
 
-| 参数              | 说明                                                  | 默认值                                                      |
-| --------------- | --------------------------------------------------- | -------------------------------------------------------- |
-| `--base-url`    | 页面基地址                                               | `https://fat.bitechdevelop.com/pdkjwpolicy-operation-h5` |
-| `--routes`      | JSON 路由列表 `[{"name":"首页","route":"/#/zwhome"},...]` | 5个内置路由（首页/政策/企业/产业/我的）                                   |
-| `--device`      | Playwright 设备名                                      | `iPhone 8`                                               |
-| `--proto-dir`   | 本地原型图目录                                             | **必填**                                                   |
-| `--work-dir`    | 工作目录（存放截图+结果）                                       | **必填**                                                   |
-| `--sensitivity` | 灵敏度: low/medium/high                                | medium                                                   |
-| `--step`        | 滚动步长 CSS px                                         | 500                                                      |
-| `--workers`     | 并行进程数                                               | 4                                                        |
-
-
-### 方式二：单对图片比对
-
-```bash
-python scripts/image_diff.py \
-  --a "图片A路径" --b "图片B路径" \
-  --output "输出目录" --sensitivity medium
-```
-
-### 方式三：批量比对（两个目录）
-
-```bash
-python scripts/batch_diff.py \
-  --dir-a "目录A" --dir-b "目录B" \
-  --output "输出目录" --sensitivity medium --workers 4
-```
-
-### 方式四：单独 Web 截图（不要比对）
-
-```bash
-# Step 1: 截图（需已在 skill 根目录 npm install）
-node scripts/web_capture.js \
-  --base-url "https://your-site.com" \
-  --device "iPhone 8" \
-  --output "./output/my_screenshots"
-
-# Step 2: 拼接
-python scripts/web_stitch.py \
-  --chunks-dir "./output/my_screenshots" \
-  --output "./output/my_screenshots"
-```
-
-### 完整工作流（含AI语义描述）
-
-**第1步：批量比对** — 运行 batch_diff.py 或 web_to_diff.py，生成 batch_results.json + 对比图
-
-**第2步：AI语义描述** — 读取 batch_results.json，对每对有差异的图片：
-
-1. 用 Read 工具查看 comparison_*.png 对比图（一张图即可看到所有差异）
-2. 对每个 region 用一句话描述差异
-3. 对每个 extra_a/extra_b 区域描述多出的内容
-4. 将描述保存为 descriptions.json
-
-**第3步：生成报告** — 运行 report_gen.py：
+1. **SSIM**：`web_to_diff` / `batch_diff` → `comparison_*.png` + 精简 `report.md`（含线索 + 内嵌 results）
+2. **Agent Review**：读 comparison + report；大框时再读 `slices_*` / crops / 原图 A/B → 写临时 `agent_review.json`
+3. **写回报告**（会校验大框复核完整性；不通过则拒绝默认 deliver）：
 
 ```bash
 python scripts/report_gen.py \
-  --results "输出目录/batch_results.json" \
-  --output "输出目录/report.md" \
-  --descriptions "输出目录/descriptions.json" \
-  --dir-a "目录A名" --dir-b "目录B名" --sensitivity medium
+  --report "./output/compare_output/report.md" \
+  --agent-review "./output/compare_output/agent_review.json"
 ```
 
-## 输出文件
+（带 `--agent-review` 时默认 deliver，只留两种文件；校验失败需补全后重跑，或显式 `--force-deliver`）
 
+### Agent 强制检查清单
 
-| 文件                         | 说明                                       |
-| -------------------------- | ---------------------------------------- |
-| `batch_results.json`       | 所有比对结果的JSON数据                            |
-| `comparison_*.png`         | 每对图片的 side-by-side 对比图（细红框=内容差异，蓝线=多出内容） |
-| `report.md`                | 最终MD报告（第3步产出）                            |
-| `web_screenshots/*.png`    | Web 截图拼接后的完整长图（方式一时产出）                   |
-| `web_screenshots/_chunks/` | 分块截图临时文件（方式一时产出）                         |
+- 中文标题字号/字重；英文副标题颜色
+- **间距/留白**（必须评判，不可默认 ignore）
+- **大框强制逐模块复核**（见下节）：不可只用一条「整体位移」解释后结束
+- 同类 low spacing 合并为一条
+- **SSIM 框 ≠ 改动**：第二遍职责是降噪；同类多行小框应合并；无感知差异必须用 `noise_or_fp` 并写 `ignore_scope`
+- **表格多小框按列复核**：当表格区域红框较多（如 ≥5）或同行多框时，至少按列核对名称/链接色、Tag（数据来源/当前状态）、操作入口，禁止整表批量归为「渲染噪声」或整表批量归为「Badge 色差」
+- **颜色可行动阈值**：报 `color_only` 前先核文字/Tag 前景色；可感知差异才 actionable。若仅 RGB 轻微波动且形态一致，归 `noise_or_fp`
+- **动态数据边界**：仅动态内容本身可用 `carousel_content` + `is_actionable=false`；同区域内静态标签/按钮/模板文案仍须比对
+- category：`typography` / `color_only` / `spacing` / `scroll_mismatch` / `layout_bug` / `text_or_copy` / `missing_or_extra_module` / `noise_or_fp` / `carousel_content`
 
+schema 见 [`references/agent_review.example.json`](references/agent_review.example.json)
 
-## 对比图标注说明
+### 大框强制逐模块复核
 
-- **细红框 (1px)**：重叠区内的内容差异（字体、颜色、布局等变化）
-- **蓝线 (2px)**：非重叠区边界，标注"仅A有(上/下/左/右)"或"仅B有(上/下/左/右)"
-- **左右并排**：图A在左，图B在右，中间灰色分隔线
+当 `suspect_global_shift=true`，或任一红框 `area_ratio > 0.40`，或存在 `slices_*` 分段时：
 
-## Web 截图技术原理
+1. 先在 `ssim_note` 说明 SSIM 为何合并成大框（错位/高度差/模块增删等）
+2. **按可见模块自上而下**逐段核对（可借助 `slices_*` 纵向分段图），**不可**找到一个根因后把整片标成位移噪音
+3. 每个可见模块至少检查：
+   - 标题 / Tab 文案
+   - 按钮与入口（更多、回到当月、前往查看等）
+   - 固定模板文案（字段标签、倒计时前缀如「剩余/剩」）
+   - 模块增删 / 图标网格项
+   - 间距与布局
+4. 在 `reviewed_modules` 列出已检查模块名（须 ≥2，且覆盖大框内可见分区）
+5. findings **可多于红框数**；大框通常对应多条可行动 + 若干条带 `ignore_scope` 的忽略项
+6. `noise_or_fp` / `carousel_content` 必须写清 `ignore_scope`（忽略范围）与理由；**禁止**把整片混合区域直接 ignore
 
-1. **设备模拟**：使用 Playwright 内置 `devices` 描述符（如 `iPhone 8`：375×667 CSS, DPR 2 → 750×1334 物理像素），确保截图宽度与原型图（750px）一致
-2. **设备选择**：自动根据原型图宽度匹配设备。750px 宽 → iPhone 8；1125px 宽 → iPhone X/11 Pro
-3. **SPA 内部滚动处理**：通过 `page.evaluate` 找到 `overflow-y:auto/scroll` 且 `scrollHeight > clientHeight` 的元素，直接操作其 `scrollTop`
-4. **懒加载触发**：先滚动到底部等待高度稳定（连续2次不变），再滚回顶部开始截图
-5. **固定层处理（防底栏重复）**：分块截图前检测并隐藏 `position: fixed|sticky` 以及常见底栏选择器（`.van-tabbar` / `[class*="tabbar"]` 等），使用 `visibility:hidden` 保持布局；**最后一帧**再恢复底栏后截图，使长图底部只保留一次 Tab（接近手机长截图）
-6. **分块截图**：按固定步长（默认500 CSS px）滚动，每步截取一个 viewport 截图
-7. **精确拼接 + 防残影**：记录每块实际 `scrollTop` 计算 overlap；**固定层隐藏成功时不再裁底**（裁底会破坏 overlap、产生半行残影）；仅在未检出固定层时对非末块裁底兜底；下一帧顶部额外丢弃约 8 物理像素（SEAM_PAD）消化取整误差
+即使未触发 `area_ratio > 0.40`，若出现密集小框（尤其表格区），也必须执行上面的按列复核规则，避免漏报真实样式差异。
 
-## 技术原理（比对引擎）
+#### 动态 vs 静态（硬性边界）
 
-1. **三种对齐策略**（utils/align.py）：
-  - 同尺寸 → 直接比对（method=none）
-  - 同宽不同高 → 顶部对齐 + 蓝线（method=top_aligned）
-  - 不同宽高 → ORB 仿射 warp A 到 B 的尺寸（method=orb_warp）
-2. **差异检测**（scripts/image_diff.py）：
-  - 高斯模糊预处理（sigma=1.0）：抑制抗锯齿/字体渲染/色域差异等高频噪声
-  - SSIM 在公共区运行（win_size=11，高斯加权窗口）：相比原 win_size=7 对局部像素噪声更鲁棒
-3. **多层噪声过滤**（scripts/utils/noise_filter.py）：
-  - **固定阈值**（替代 Otsu）：Otsu 在相似图片上会取极低阈值导致误标
-  - **最小面积过滤**：medium 灵敏度下 0.1% 图像面积以下直接丢弃
-  - **最小尺寸过滤**：过滤细长条等伪影
-  - **均值差异强度校验**：区域平均差异强度过低则丢弃，消除边界伪影
-  - **邻近合并**：把相距较近的真实差异合并为一个区域
-4. **逆 warp 映射**（ORB case）：差异框在 B 坐标系下检测，用逆仿射变换把框的 4 个角点 warp 回 A 的原图坐标系
-5. **自动配对**：优先文件名匹配，回退感知哈希(pHash)相似度匹配（distance ≤ 20）
-6. **并行处理**：ProcessPoolExecutor 多进程并行
+| 可忽略（carousel_content / 运营数据） | 仍须比对（text_or_copy / missing_or_extra_module 等） |
+|--------------------------------------|------------------------------------------------------|
+| 文章/政策标题正文、列表条目内容 | 分区标题、Tab 名（如「政策解读」下的固定入口文案） |
+| 日期、条数、「168条」等数量 | 「回到当月」「更多」「前往查看」等按钮/入口 |
+| 倒计时数字本身（15 / 41） | 倒计时模板文案（「剩余X天」vs「剩X天」） |
+| 轮播/Banner 运营图内容 | 图标分类名、静态标签文案（数智低碳 vs 数字低碳） |
+| 表格单元格业务值（编号、名称内容、日期值等） | 表格静态样式（字色/链接色/Badge 样式） |
 
-## 注意事项
+### 用户回复模板（精简）
 
-- 图片格式支持: PNG, JPG, JPEG, BMP, TIFF, WebP
-- Web 截图会自动选择与原型图宽度匹配的设备。750px 宽 → iPhone 8；如原型图其他宽度，需手动指定 `--device`
-- Web 截图优先使用系统 Edge，失败则回退 Chrome（无需单独下载 Playwright Chromium）
-- 同宽不同高时才会有蓝线；不同宽高时（ORB warp）所有内容都 warp 到同一坐标系，无蓝线
-- 缩放比例差异越大，ORB 校准耗时越长（通常<2秒）
-- **灵敏度建议先用 medium**：这是原型图 vs 实现图对比的推荐默认值，已针对字体/抗锯齿/色域差异做了抑制
-- 批量比对时，未配对的图片会在报告和JSON中列出
-- AI语义描述需要手动执行第2步，不自动调用
-- Web 截图工作流依赖 Playwright：请在 skill 根目录执行 `npm install`
+```text
+{页名} · SSIM {xx%} · 可行动 {n}
+- [high/medium] …
+- [low] …（可合并）
+产物: comparison_*.png · report.md
+```
 
+## 输出说明
+
+| 文件 | 说明 |
+|------|------|
+| `comparison_*.png` | 左右对比图（红框=差异，蓝线=仅一侧有） |
+| `report.md` | 精简报告；末尾 HTML 注释内嵌 batch_results |
+| `slices_*`（临时） | 大框纵向分段；供 Agent 复核，deliver 时删除 |
+| `crops_*`（临时） | `--save-crops` 时的区域裁剪；deliver 时删除 |
+
+`--full` 可出完整报告；`--save-crops` 可选裁剪（交付前会删）。配对时忽略 `_` 开头文件名。
+
+## 原理摘要
+
+- 对齐：同尺寸 / 同宽顶对齐 / ORB warp
+- SSIM + 噪声过滤；`suspect_global_shift`（单框面积>40%）提示大框合并
+- 大框自动产出纵向 `slice_paths`，降低 Agent 漏看中段模块的概率
+- `report_gen --agent-review` 会校验 `reviewed_modules` / 大框 findings 覆盖；不完整则拒绝默认 deliver
+- 详细原理见历史文档段落；日常以交付物与 Agent 协议为准

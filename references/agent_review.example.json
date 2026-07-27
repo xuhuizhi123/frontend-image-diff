@@ -1,0 +1,116 @@
+{
+  "pairs": [
+    {
+      "pair_name": "示例页名须与 batch_results.pair_name 一致",
+      "overall_summary": "存在大框错位合并；拆解后含副标题色差、标题字号差、Banner下间距差，以及一处静态入口文案差。列表正文为运营数据已忽略。",
+      "ssim_note": "第一遍因竖向错位合并为1个大区(region#1 area_ratio>0.40)，以下为按模块拆解后的真实差异；不可只用「整体位移」一条带过。",
+      "reviewed_modules": [
+        "Banner/搜索栏",
+        "分区标题 LEARNING PATH",
+        "内容列表区",
+        "底部更多入口"
+      ],
+      "findings": [
+        {
+          "id": "f1",
+          "category": "color_only",
+          "severity": "low",
+          "is_actionable": true,
+          "where": "LEARNING PATH / SCIENCE VITALITY / SEASONAL GUIDE",
+          "summary": "英文副标题颜色不一致（粉 vs 橙）",
+          "evidence": "左粉右橙",
+          "source_region_index": 1
+        },
+        {
+          "id": "f2",
+          "category": "typography",
+          "severity": "medium",
+          "is_actionable": true,
+          "where": "慢步花木 / 活力科普 / 四季图鉴",
+          "summary": "中文分区标题字号/字重不一致",
+          "source_region_index": 1
+        },
+        {
+          "id": "f3",
+          "category": "spacing",
+          "severity": "low",
+          "is_actionable": true,
+          "where": "Banner 与搜索栏之间",
+          "summary": "一侧多一段白边，导致下方模块整体轻微下移；属设计间距还原问题",
+          "evidence": "Banner 底到搜索栏顶的空隙左右不一致",
+          "source_region_index": 1
+        },
+        {
+          "id": "f4",
+          "category": "text_or_copy",
+          "severity": "medium",
+          "is_actionable": true,
+          "where": "底部固定入口",
+          "summary": "静态按钮文案不一致：原型「回到当月」，实现为「返回本月」",
+          "evidence": "同区域内列表标题可忽略，但按钮文案仍须比对",
+          "source_region_index": 1
+        },
+        {
+          "id": "f5",
+          "category": "carousel_content",
+          "severity": "ignore",
+          "is_actionable": false,
+          "where": "内容列表区 · 条目正文",
+          "summary": "列表条目标题与日期为运营数据，两侧内容不同属预期",
+          "ignore_scope": "仅条目正文标题、日期、条数；不含分区标题/Tab/更多按钮",
+          "evidence": "动态数据边界：不同运营内容不算还原缺陷",
+          "source_region_index": 1
+        },
+        {
+          "id": "f6",
+          "category": "noise_or_fp",
+          "severity": "low",
+          "is_actionable": false,
+          "where": "region#1 下半段因 f3 间距引起的对齐残影",
+          "summary": "非独立差异；由上方间距差导致的像素错位残影",
+          "ignore_scope": "仅错位残影像素，不含该段内静态文案/按钮",
+          "source_region_index": 1
+        },
+        {
+          "id": "f7",
+          "category": "color_only",
+          "severity": "medium",
+          "is_actionable": true,
+          "where": "数据表格 · 系统名称列（多行）",
+          "summary": "系统名称文字颜色不一致（左偏深蓝灰，右偏浅蓝灰）",
+          "evidence": "同列多行均出现一致色差模式，属于静态样式未对齐",
+          "source_region_index": 1
+        },
+        {
+          "id": "f8",
+          "category": "noise_or_fp",
+          "severity": "ignore",
+          "is_actionable": false,
+          "where": "数据表格 · 数据来源/当前状态 Badge",
+          "summary": "勿将抗锯齿与亚像素渲染残影直接判为 color_only",
+          "ignore_scope": "仅 RGB 轻微波动且形态一致的 Badge 渲染噪声",
+          "evidence": "文案、布局和组件形态一致时，应归噪声而非样式差异",
+          "source_region_index": 1
+        }
+      ]
+    },
+    {
+      "pair_name": "反例_勿这样写",
+      "_comment": "以下为错误示范：大框只有一条笼统位移、无 reviewed_modules、整片 ignore。report_gen 校验应拒绝。",
+      "overall_summary": "整体位移导致差异",
+      "ssim_note": "大框是位移",
+      "reviewed_modules": [],
+      "findings": [
+        {
+          "id": "bad1",
+          "category": "noise_or_fp",
+          "severity": "ignore",
+          "is_actionable": false,
+          "where": "整页",
+          "summary": "整体位移，忽略",
+          "source_region_index": 1
+        }
+      ]
+    }
+  ]
+}
